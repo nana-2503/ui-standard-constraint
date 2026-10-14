@@ -1,0 +1,15 @@
+# 依赖 / 构建产物（本 skill 零依赖，通常不会出现）
+node_modules/
+dist/
+build/
+coverage/
+
+# 自查产物：是临时报告，不要提交
+ui-check-report.txt
+*.log
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,21 @@
+{
+  "$comment": "ui-standard-constraint 阈值配置。改这里即可调规则松紧，不要改 check-ui-rules.mjs。",
+  "hueBluePurple": [220, 320],
+  "minSatBluePurple": 25,
+  "maxCardRadiusPx": 8,
+  "maxAnyRadiusPx": 16,
+  "shadowWarnBlurPx": 8,
+  "maxShadowBlurPx": 16,
+  "creamHue": [30, 70],
+  "warmAccentHue": [15, 40],
+  "maxFileLines": 400,
+  "warnFileLines": 250,
+  "maxUseState": 8,
+  "tableLongTextChars": 60,
+  "longTextChars": 120,
+  "maxFixedWidthPx": 360,
+  "warnSingleSignal": false,
+  "enable": [],
+  "disable": ["R007"],
+  "severity": {}
+}
