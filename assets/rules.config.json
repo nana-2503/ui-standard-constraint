@@ -15,6 +15,7 @@
   "longTextChars": 120,
   "maxFixedWidthPx": 360,
   "warnSingleSignal": false,
+  "baseUi": true,
   "enable": [],
   "disable": ["R007"],
   "severity": {}

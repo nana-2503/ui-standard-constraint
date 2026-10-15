@@ -1,9 +1,9 @@
 ---
 name: ui-standard-constraint
-description: 前端 UI 编写与布局的强制约束（shadcn + Tailwind）。凡是新增、修改、重构、评审 frontend/ 下的界面、组件、样式、布局、表格列表、响应式或暗色主题，都必须先加载本 skill：它固定配色、圆角、边框、阴影、留白、数据展示、移动端与前后端拆分规则，并要求交付前运行 scripts/check-ui-rules.mjs 自查。
-whenToUse: 涉及 frontend/ 下 UI 代码的编写、重构、评审或截图验收；用户提到前端、界面、组件、样式、布局、暗色模式、响应式、表格、列表、shadcn 时
+description: 前端 UI 编写与布局的强制约束（shadcn + Tailwind + Base UI）。凡是新增、修改、重构、评审 frontend/ 下的界面、组件、样式、布局、表格列表、响应式或暗色主题，都必须先加载本 skill：它固定配色、圆角、边框、阴影、留白、数据展示、移动端、前后端拆分规则，以及 Base UI 基础语法（render 组合、data-* 状态属性、子路径导入），并要求交付前运行 scripts/check-ui-rules.mjs 自查。
+whenToUse: 涉及 frontend/ 下 UI 代码的编写、重构、评审或截图验收；用户提到前端、界面、组件、样式、布局、暗色模式、响应式、表格、列表、shadcn、Base UI、render 组合时
 metadata:
-  version: "1.1.1"
+  version: "1.2.0"
   owner: 前端
   applies-to: "frontend/**"
   stack: "React + Vite + Tailwind + shadcn/ui（示例按 Tailwind v3 CSS 变量写法）"
@@ -38,6 +38,7 @@ metadata:
 | 9 | R008 + 人工 | 移动端额外优化：触控目标 ≥ 44px、无横向溢出、宽表降级为卡片 |
 | 10 | R006 | 数据列表不换行：`truncate` + `whitespace-nowrap`，禁 `whitespace-normal/break-words/flex-wrap` |
 | 11 | R009 | 前后端与文件拆分：单文件 ≤ 250 行（> 400 为 error），数据访问下沉到 `api.ts`/hooks |
+| 12 | R010 | **使用 Base UI 基础语法**：组合用 `render`（不是 `asChild`）；状态样式用 `data-open`/`data-checked` 等（不是 `data-[state=…]`）；子路径导入；业务层不直接引原语、不引 Radix |
 
 细则与正反例见 `references/`：
 
@@ -49,13 +50,14 @@ metadata:
 | `references/04-data-display.md` | 表格/列表/长文本、单行显示与列宽 |
 | `references/05-code-structure.md` | 目录结构、前后端拆分、组件与数据层分离 |
 | `references/06-shadcn-mcp.md` | 如何用 shadcn MCP 查组件/示例/安装 |
+| `references/07-base-ui.md` | **Base UI 基础语法**：`render` 组合、`useRender`/`mergeProps`、`data-*` 状态属性、part 结构、分层 |
 
 ## 2. 工作流（每次前端改动按序执行）
 
 1. **查组件**：需要交互组件时，先用 shadcn MCP 搜索并看示例（`references/06-shadcn-mcp.md`），不要手搓。
 2. **定 token**：颜色/圆角/阴影只用 `src/index.css` 里的 CSS 变量 + Tailwind 语义类（`bg-card`、`text-muted-foreground`、`border`）。要新增色，先改 token，再在组件里引用。
 3. **搭结构**：先定移动端单列，再逐级加断点；容器层级能少一层就少一层。
-4. **写代码**：按职责拆文件（页面 / feature 组件 / hook / `lib/api` / 类型）。
+4. **写代码**：按职责拆文件（页面 / feature 组件 / hook / `lib/api` / 类型）；组合 Base UI 原语一律用 `render={<X />}`，状态样式写 `data-open`/`data-checked` 等属性（细则见 `references/07-base-ui.md`）。
 5. **自查**：`node scripts/check-ui-rules.mjs`（用法见 §3），把 error 清零。
 6. **构建**：`cd frontend && npm run lint && npm run build`。若环境里设了 `NODE_ENV=production`，包管理器会忽略 devDependencies（缺 `tsc`/`eslint`），此时用 `env -u NODE_ENV npm run lint && env -u NODE_ENV npm run build`。
 7. **报告**：按 `assets/acceptance-checklist.md` 逐条给出结论，并附上自查脚本输出。

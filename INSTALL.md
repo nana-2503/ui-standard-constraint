@@ -105,7 +105,7 @@ git commit -m "chore: add ui-standard-constraint skill"
 
 ```bash
 SKILL="${DSH_HOME:-$HOME/.dsh}/skills/ui-standard-constraint"
-node "$SKILL/scripts/check-ui-rules.mjs" --list-rules   # 能列出 R001…R009 即为就绪
+node "$SKILL/scripts/check-ui-rules.mjs" --list-rules   # 能列出 R001…R010 即为就绪
 ```
 
 期望输出：
@@ -115,6 +115,7 @@ R001  error 禁止蓝紫配色 / 蓝紫暗色模式
 R002  error 禁止 Claude 风格（米白底 + 暖橙 accent + serif 标题）
 ...
 R009  error 文件过大或职责未拆分
+R010  warn  Base UI 基础语法（render / data-* / 子路径导入 / 不混 Radix）
 SUP   warn  抑制注释缺少理由
 ```
 
@@ -203,6 +204,12 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/ui-standard-constraint"
 
 项目级安装同理，删除目录后记得清掉 `AGENTS.md` 里的接入片段。升级后重新跑一次 `--list-rules` 与仓库自查，确认阈值行为没有意外变化。
 
+### 版本变化提示
+
+- **v1.2.0**：新增规则 12 / R010「Base UI 基础语法」（`render` 组合、`data-*` 状态属性、子路径导入、业务层不直引原语、不混 Radix），新增 `references/07-base-ui.md`；配置新增 `"baseUi": true`，Radix 项目改成 `false` 可关闭该类检查。老项目升级后可能新报一批 R010（默认 warn，不阻塞退出码），需要时用基线隔离。
+- **v1.1.x**：11 条规则（R001–R009）+ 基线机制 + 基础自查脚本。
+
+
 ---
 
 ## 十四、常见问题
@@ -228,6 +235,12 @@ shadcn 生成的原语默认豁免（`--include-ui-primitives` 可纳入），`*
 
 **Q：存量项目一定要一次改到全绿吗？**
 不用。skill 明确写了「已有页面不要求一次性改造达标，新写和正在改的部分必须达标」，用基线机制区分。
+
+**Q：R010（Base UI）报了一堆怎么办？项目原本用 Radix。**
+R010 只在项目原语层是 `@base-ui/react` 时才适用。若项目本来就用 Radix，把 `assets/rules.config.json` 的 `"baseUi"` 改成 `false`，整类检查关闭（其余规则不受影响）。若是混用/迁移中项目，先看 `references/07-base-ui.md` 的对照表：`asChild` → `render={<X />}`、`data-[state=open]:` → `data-[open]:`、根 barrel → 子路径导入。存量违规同样可以用基线机制隔离。
+
+**Q：`asChild` 在 `src/components/ui/**` 里为什么没报？**
+封装层（`components/ui/**`、`lib/`、`hooks/`、`store/**`）允许保留 `asChild` 兼容层（内部转成 `useRender`），R010 只在业务层提示改用 `render`。原语层里给 Base UI 原生部件直接写 `asChild` 仍是 error。
 
 **Q：规则和仓库已有的 `AGENTS.md` 冲突怎么办？**
 以 `AGENTS.md` 为准（它管部署、发版、CI 等硬流程）；把 UI 规则作为补充条款并入相应小节。

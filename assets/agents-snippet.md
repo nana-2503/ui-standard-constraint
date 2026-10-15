@@ -30,8 +30,9 @@ node "<skill目录>/scripts/check-ui-rules.mjs" --list-rules   # 能列出规则
 ## 前端 UI 约束
 
 - 适用：`frontend/` 下的界面、组件、样式、布局、表格列表、响应式与暗色主题改动。
-- 动手前先加载 skill `ui-standard-constraint`，按其 11 条硬规则执行（配色、圆角、边框嵌套、阴影、响应式、数据列表单行、前后端与文件拆分）。
+- 动手前先加载 skill `ui-standard-constraint`，按其 12 条硬规则执行（配色、圆角、边框嵌套、阴影、响应式、数据列表单行、前后端与文件拆分、Base UI 基础语法）。
 - 交互组件一律先用 shadcn MCP 查询与取示例，禁止手写等价组件。
+- Base UI 原语组合用 `render={<X />}`（不是 Radix 的 `asChild`）；状态样式用 `data-open`/`data-checked` 等属性（不是 `data-[state=…]`）。
 - 交付前必须运行本 skill 的 `scripts/check-ui-rules.mjs --changed`：error 必须清零；warning 需逐条给出保留理由。
 - 存量违规用基线机制区分，不要求一次性改造：
   `--write-baseline .ui-baseline.json` 生成后，日常用 `--baseline .ui-baseline.json` 只查新增违规。

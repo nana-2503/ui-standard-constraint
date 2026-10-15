@@ -42,6 +42,7 @@ const RULE_META = {
   R007: ['info', '描述性文本元素（细则待补，默认关闭）'],
   R008: ['warn', '响应式缺失 / 移动端溢出风险'],
   R009: ['error', '文件过大或职责未拆分'],
+  R010: ['warn', 'Base UI 基础语法（render / data-* / 子路径导入 / 不混 Radix）'],
   SUP: ['warn', '抑制注释缺少理由'],
 };
 
@@ -61,6 +62,7 @@ const DEFAULT_CONFIG = {
   longTextChars: 120,
   maxFixedWidthPx: 360,
   warnSingleSignal: false,
+  baseUi: true,
   enable: [],
   disable: ['R007'],
   severity: {},
@@ -394,6 +396,7 @@ function createChecker(cfg, o) {
 
     if (isCss) checkCss({ text, lines, rel, report });
     if (isJsx || ext === '.html') checkJsx({ text, lines, rel, report, isJsx });
+    if (isJsx) checkBaseUi({ text, lines, rel, report });
     checkFileLevel({ text, lines, rel, ext, isCss, report });
   }
 
@@ -677,6 +680,58 @@ function createChecker(cfg, o) {
         }
       }
       if (!selfClosing) { stack.push({ tag, depth, isSurface, line }); depth++; }
+    }
+  }
+
+  /* ------------------------------------------- Base UI 基础语法检查 R010 */
+
+  function checkBaseUi({ text, lines, rel, report }) {
+    if (!cfg.baseUi) return;
+    /* 收集 base-ui 导入的本地命名（命名空间与具名别名），用于识别原生部件 */
+    const nsNames = new Set();
+    for (const m of text.matchAll(/import\s+(?:\*\s+as\s+([\w$]+)|(\{[\s\S]*?\}))\s+from\s+["']@base-ui\/react\/[\w-]+["']/g)) {
+      if (m[1]) nsNames.add(m[1]);
+      if (m[2]) {
+        for (const part of m[2].replace(/[{}]/g, '').split(',')) {
+          const pieces = part.trim().split(/\s+as\s+/);
+          const local = (pieces[1] || pieces[0] || '').trim();
+          if (local) nsNames.add(local);
+        }
+      }
+    }
+    /* 封装层自身允许直接引用原语与定义 asChild 兼容层 */
+    const inUiLayer = /components\/ui\//.test(rel) || /\/(lib|hooks|store|stores)\//.test(rel);
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const ln = i + 1;
+
+      const radix = line.match(/from\s+["']@radix-ui\/[^"']+["']/);
+      if (radix) {
+        report('R010', ln, `项目原语层是 Base UI，不应引入 Radix：${radix[0]}；改用 @base-ui/react/<组件>`, line, 'error');
+      }
+
+      if (/from\s+["']@base-ui\/react["']/.test(line)) {
+        report('R010', ln, '从根 barrel `@base-ui/react` 导入会拉入全部组件；改为子路径 `@base-ui/react/dialog` 等', line, 'warn');
+      }
+
+      const direct = line.match(/from\s+["']@base-ui\/react\/([\w-]+)["']/);
+      if (direct && !inUiLayer) {
+        report('R010', ln, `业务层直接 import Base UI 原语（${direct[0]}）；应通过 src/components/ui 的封装组件`, line, 'warn');
+      }
+
+      if (/data-\[state=/.test(line)) {
+        report('R010', ln, '`data-[state=…]` 是 Radix 习惯；Base UI 产出 `data-open`/`data-checked` 等，写成 `data-[open]:`', line, 'warn');
+      }
+
+      if (/\basChild\b/.test(line)) {
+        const tag = line.match(/<([\w$]+)\.([\w$]+)/);
+        if (tag && nsNames.has(tag[1])) {
+          report('R010', ln, `Base UI 原生部件 <${tag[1]}.${tag[2]}> 不支持 asChild（prop 会被透传到 DOM 且组合失效），改用 render={<X />}`, line, 'error');
+        } else if (!inUiLayer && /<\w+[^>]*\basChild\b/.test(line)) {
+          report('R010', ln, '`asChild` 只是项目封装的兼容写法；Base UI 原生组合用 `render={<X />}`，新代码请用 render', line, 'warn');
+        }
+      }
     }
   }
 

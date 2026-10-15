@@ -9,7 +9,7 @@
 - [ ] `cd frontend && env -u NODE_ENV npm run build` 通过
 - [ ] 未新增无理由的 `ui-allow` 抑制注释
 
-## B. 规则覆盖（11 条；括号内为脚本规则号）
+## B. 规则覆盖（12 条；括号内为脚本规则号）
 
 - [ ] **1 shadcn 优先**（人工 + MCP）：新交互组件来自 shadcn MCP 查询结果，未手搓等价件；`components/ui/**` 未被业务代码改写
 - [ ] **2 无描述性文本**（R007，默认关闭需 `--enable R007`）：没有解释性/宣传性段落；说明信息用标签、状态、层级表达
@@ -22,6 +22,7 @@
 - [ ] **9 移动端优化**（R008 + 人工）：触控目标 ≥ 44px；无横向溢出；宽表降级为卡片或可横滚容器；底部操作留安全区
 - [ ] **10 数据列表不换行**（R006）：表格/列表单元格 `truncate` + `whitespace-nowrap`，超长内容有 `title`/Tooltip
 - [ ] **11 拆分**（R009）：单文件 ≤ 250 行（> 400 为 error）；数据访问在 `api.ts`/hooks；前端目录内无后端代码
+- [ ] **12 Base UI 基础语法**（R010）：组合用 `render={<X />}` 而非 `asChild`；状态样式用 `data-open`/`data-checked` 等而非 `data-[state=…]`；从 `@base-ui/react/<组件>` 子路径导入；业务层不直接引原语、不引 Radix
 
 ## C. 视觉核对（截图）
 
