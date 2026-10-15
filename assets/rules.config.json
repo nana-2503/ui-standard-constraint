@@ -16,6 +16,7 @@
   "maxFixedWidthPx": 360,
   "warnSingleSignal": false,
   "baseUi": true,
+  "colorLiterals": true,
   "enable": [],
   "disable": ["R007"],
   "severity": {}

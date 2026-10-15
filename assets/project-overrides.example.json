@@ -1,0 +1,38 @@
+{
+  "$comment": "项目级覆盖示例。复制成 <repo>/.dsh/ui-rules.config.json 即会被自动加载；或用 --config <path> 显式指定。只覆盖与全局标准不同的项，不要改 skill 自带的 assets/rules.config.json。",
+  "$howto": [
+    "1) 只覆盖确实有设计系统依据的字段，其余保持默认。",
+    "2) 覆盖后先 --write-baseline 固化存量，日常用 --baseline 只查新增违规。",
+    "3) 风格底线不要动：暗色底必须中性灰、圆角全站一致、阴影克制。",
+    "4) 以 $ 开头的键是注释，会被忽略。"
+  ],
+
+  "hueBluePurple": [235, 320],
+  "maxCardRadiusPx": 12,
+  "maxAnyRadiusPx": 16,
+  "severity": {
+    "R003": "warn"
+  },
+  "baseUi": false,
+  "colorLiterals": true,
+
+  "$field_reference": {
+    "hueBluePurple": "暗色/主题 token 的蓝紫色相带 [起, 止]",
+    "minSatBluePurple": "色相带内触发的最低饱和度",
+    "maxCardRadiusPx": "卡片/容器圆角上限（px）",
+    "maxAnyRadiusPx": "其它元素圆角上限（px）",
+    "maxShadowBlurPx": "阴影模糊 error 阈值（px）",
+    "shadowWarnBlurPx": "阴影模糊 warning 阈值（px）",
+    "maxFileLines": "单文件 error 行数上限",
+    "warnFileLines": "单文件 warning 行数阈值",
+    "maxUseState": "单文件 useState 数量 warning 阈值",
+    "maxFixedWidthPx": "无断点前缀的固定宽度 error 阈值（px）",
+    "tableLongTextChars": "表格单元格内长文本 warning 阈值（字符）",
+    "warnSingleSignal": "是否报告 R002 单信号（米白底/暖橙/serif 只命中其一）",
+    "baseUi": "是否启用 Base UI 语法检查（R010）；项目用 Radix 时设 false",
+    "colorLiterals": "是否检查硬编码颜色字面量（R011）",
+    "enable": "额外启用的规则，如 [\"R007\"]",
+    "disable": "禁用的规则，如 [\"R004\"]",
+    "severity": "逐规则改级别，如 { \"R003\": \"warn\", \"R001\": \"info\" }"
+  }
+}

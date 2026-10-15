@@ -2,7 +2,7 @@
 
 **前端 UI 标准约束** —— 给 AI 编程 agent 用的前端 UI 强制规范（shadcn/ui + Tailwind CSS + Base UI），由「Markdown 规则 + 零依赖检查脚本」两层组成。
 
-![version](https://img.shields.io/badge/version-1.2.0-blue)
+![version](https://img.shields.io/badge/version-1.3.0-blue)
 ![node](https://img.shields.io/badge/node-%3E%3D18-green)
 ![deps](https://img.shields.io/badge/dependencies-0-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-lightgrey)
@@ -29,8 +29,10 @@ AI 写前端很快，但审美和工程习惯不稳定，典型症状每次都�
 
 ## 二、核心特点
 
-- **强约束，不是清单**：12 条硬规则 + 12 项验收，违反即返工；先按规则落结构，不要写完再回头改。
-- **可机器校验**：R001–R010 均有脚本实现，退出码 `0/1/2` 可直接接入 CI 或 git hook。
+- **强约束，不是清单**：14 条硬规则 + 14 项验收，违反即返工；先按规则落结构，不要写完再回头改。
+- **可机器校验**：R001–R011 均有脚本实现，退出码 `0/1/2` 可直接接入 CI 或 git hook。
+- **颜色纪律 + 状态完备**：色值只允许出现在 token 层（R011 拦 `bg-[#…]`、内联色值与 CSS 写死颜色）；hover / focus-visible / loading / empty / error 等 9 个状态逐一交代。
+- **项目级覆盖**：设计系统另有一套取值时，用 `.dsh/ui-rules.config.json` 分层覆盖，不动全局标准、也不靠堆 `ui-allow`。
 - **覆盖 Base UI 基础语法**：组合用 `render`（不是 `asChild`）、状态样式用 `data-open`/`data-checked`（不是 `data-[state=…]`）、子路径导入、业务层不直引原语；误用 Radix 写法会被 R010 拦下。
 - **零依赖单文件**：只用 Node 内置模块（Node ≥ 18），不需要 `npm install`，不污染项目依赖。
 - **按需加载**：`SKILL.md` 只给速查表，细则按需读 `references/`，不一次性刷满上下文。
@@ -57,6 +59,8 @@ AI 写前端很快，但审美和工程习惯不稳定，典型症状每次都�
 | 10 | R006 | 数据列表不换行：`truncate` + `whitespace-nowrap`，禁 `whitespace-normal/break-words/flex-wrap` |
 | 11 | R009 | 前后端与文件拆分：单文件 ≤ 250 行（> 400 为 error），数据访问下沉到 `api.ts` / hooks |
 | 12 | R010 | **使用 Base UI 基础语法**：组合用 `render`（不是 `asChild`）；状态样式用 `data-open`/`data-checked` 等（不是 `data-[state=…]`）；子路径导入；业务层不直引原语、不引 Radix |
+| 13 | R011 | **不写死颜色**：禁 `bg-[#…]`/`text-[rgb(…)]` 与内联样式色值；色值只出现在 token 层（`:root`/`.dark`/`[data-theme]`/`@theme`） |
+| 14 | 人工 | **状态完备 + 可访问性**：hover / focus-visible / active / disabled / loading / empty / error / selected 逐一交代；键盘可达、图标有 `aria-label`、触控 ≥ 44px；动效克制并尊重 `prefers-reduced-motion` |
 
 ### 脚本规则与默认级别
 
@@ -71,6 +75,7 @@ R007  info  描述性文本元素（细则待补，默认关闭）
 R008  warn  响应式缺失 / 移动端溢出风险
 R009  error 文件过大或职责未拆分
 R010  warn  Base UI 基础语法（render / data-* / 子路径导入 / 不混 Radix）
+R011  error 硬编码颜色字面量（颜色只能来自 token）
 SUP   warn  抑制注释缺少理由
 ```
 
@@ -88,6 +93,30 @@ SUP   warn  抑制注释缺少理由
 
 R010 会拦下：引入 `@radix-ui/*`（error）、给 Base UI 原生部件写 `asChild`（error）、根 barrel 导入 / `data-[state=…]` / 业务层直引原语（warn）。项目本来就用 Radix 时，把 `assets/rules.config.json` 里的 `baseUi` 设为 `false` 即可关掉这一整类检查。语法细则与正反例见 `references/07-base-ui.md`。
 
+### 颜色只来自 token（规则 13 / R011）
+
+`bg-[#ffffff]`、`text-[rgb(24,24,27)]`、`border-[hsl(240,5%,90%)]`、`style={{ backgroundColor: "#f4f4f5" }}`，以及 CSS 里 `.card { background: #fff }`，都会被 R011 报出（error）。合法写法是语义类（`bg-background`/`text-muted-foreground`/`border`）或 `var(--token)` 引用（`bg-[hsl(var(--primary))]` 不算写死）。
+
+- **token 源文件自动豁免**：`theme.ts`、`colors.ts`、`palette.css`、`chart.ts`、`brand.css` 这类色值定义处（仅 `.ts/.js/.css/.scss`，同名 `.tsx` 组件不豁免）。
+- **图表 / 终端色板**：抽到 `chart.ts` 即豁免；真正的内联样式才报。
+- 确有需要保留的固定色（品牌 logo、第三方嵌入）：`// ui-allow R011: 理由` 逐处标注，不允许用来「顺手写个 hex」。
+
+### 状态完备与可访问性（规则 14 / 人工）
+
+一个可交互元素要交代 9 个状态：**default、hover、focus-visible、active、disabled、loading、empty、error、selected**。补充硬要求：关键信息不靠 hover 传达（移动端没有 hover）；图标按钮必须 `aria-label`、装饰图标 `aria-hidden="true"`；表单错误用 `aria-invalid` + `aria-describedby`；加载超约 300ms 才显示 spinner；触控目标 ≥ 44×44px；动效 120–200ms 且尊重 `prefers-reduced-motion`。细则与写法见 `references/08-saas-style-and-states.md`。
+
+### 项目级覆盖（设计系统与全局标准不同时）
+
+配置分层：`内置默认 → skill 自带 assets/rules.config.json → <cwd>/.dsh/ui-rules.config.json（自动发现） → --config <path>`；`enable`/`disable` 取并集，`severity` 合并，`$` 开头的键当注释忽略。
+
+```bash
+mkdir -p .dsh && cp "$SKILL/assets/project-overrides.example.json" .dsh/ui-rules.config.json
+node "$SKILL/scripts/check-ui-rules.mjs"                      # 自动读取项目覆盖
+node "$SKILL/scripts/check-ui-rules.mjs" --config ./ui-rules.json
+```
+
+例如设计系统确实用 indigo 主色 + 12px 卡片圆角时，用覆盖放开这两项（而不是放宽所有项目的标准，也不是堆一堆 `ui-allow`）。覆盖前确认三条风格底线仍成立：暗色底是中性灰、圆角全站一致、阴影克制。
+
 ## 四、目录结构
 
 ```
@@ -100,12 +129,14 @@ ui-standard-constraint/
 │   ├── 04-data-display.md          # 表格/列表/长文本、单行显示与列宽
 │   ├── 05-code-structure.md        # 目录结构、前后端拆分、组件与数据层分离
 │   ├── 06-shadcn-mcp.md            # 如何用 shadcn MCP 查组件/示例/安装
-│   └── 07-base-ui.md               # Base UI 基础语法：render 组合、useRender/mergeProps、data-* 状态属性、分层
+│   ├── 07-base-ui.md               # Base UI 基础语法：render 组合、useRender/mergeProps、data-* 状态属性、分层
+│   └── 08-saas-style-and-states.md # 现代 SaaS 风格取向、9 个交互状态、不写死颜色（R011）、Tailwind v4、项目级覆盖
 ├── scripts/
-│   └── check-ui-rules.mjs          # 自查脚本（R001–R010，零依赖，Node ≥ 18）
+│   └── check-ui-rules.mjs          # 自查脚本（R001–R011，零依赖，Node ≥ 18）
 └── assets/
     ├── tokens.css                  # 允许的 token 基线（Tailwind v3 + HSL 变量）
-    ├── rules.config.json           # 阈值配置：圆角上限、禁用色相区间、文件行数上限…
+    ├── rules.config.json           # 全局阈值：圆角上限、禁用色相区间、文件行数上限…
+    ├── project-overrides.example.json  # 项目级覆盖示例（复制成 .dsh/ui-rules.config.json 即自动生效）
     ├── acceptance-checklist.md     # 交付验收清单（逐条勾选）
     └── agents-snippet.md           # 贴进 AGENTS.md / CLAUDE.md 的触发加固片段
 ```
@@ -147,6 +178,7 @@ node "$SCRIPT" --only R001,R003,R009           # 只跑指定规则（并强制�
 node "$SCRIPT" --json                          # 机器可读输出，便于接 CI
 node "$SCRIPT" --write-baseline .ui-baseline.json   # 存量项目：生成基线
 node "$SCRIPT" --baseline .ui-baseline.json    # 之后只报新增违规
+node "$SCRIPT" --config ./ui-rules.json        # 显式指定项目级配置（见「项目级覆盖」）
 node "$SCRIPT" --list-rules                    # 查看规则表
 node "$SCRIPT" --help                          # 查看全部参数
 ```

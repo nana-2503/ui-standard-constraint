@@ -3,7 +3,7 @@ name: ui-standard-constraint
 description: 前端 UI 编写与布局的强制约束（shadcn + Tailwind + Base UI）。凡是新增、修改、重构、评审 frontend/ 下的界面、组件、样式、布局、表格列表、响应式或暗色主题，都必须先加载本 skill：它固定配色、圆角、边框、阴影、留白、数据展示、移动端、前后端拆分规则，以及 Base UI 基础语法（render 组合、data-* 状态属性、子路径导入），并要求交付前运行 scripts/check-ui-rules.mjs 自查。
 whenToUse: 涉及 frontend/ 下 UI 代码的编写、重构、评审或截图验收；用户提到前端、界面、组件、样式、布局、暗色模式、响应式、表格、列表、shadcn、Base UI、render 组合时
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   owner: 前端
   applies-to: "frontend/**"
   stack: "React + Vite + Tailwind + shadcn/ui（示例按 Tailwind v3 CSS 变量写法）"
@@ -39,6 +39,8 @@ metadata:
 | 10 | R006 | 数据列表不换行：`truncate` + `whitespace-nowrap`，禁 `whitespace-normal/break-words/flex-wrap` |
 | 11 | R009 | 前后端与文件拆分：单文件 ≤ 250 行（> 400 为 error），数据访问下沉到 `api.ts`/hooks |
 | 12 | R010 | **使用 Base UI 基础语法**：组合用 `render`（不是 `asChild`）；状态样式用 `data-open`/`data-checked` 等（不是 `data-[state=…]`）；子路径导入；业务层不直接引原语、不引 Radix |
+| 13 | R011 | **不写死颜色**：禁 `bg-[#…]`/`text-[rgb(…)]` 与内联样式色值；色值只出现在 token 层（`:root`/`.dark`/`@theme`） |
+| 14 | 人工 | **状态完备 + 可访问性**：hover / focus-visible / active / disabled / loading / empty / error / selected 逐一交代；键盘可达、图标有 `aria-label`、触控 ≥44px；动效克制并尊重 `prefers-reduced-motion` |
 
 细则与正反例见 `references/`：
 
@@ -51,6 +53,7 @@ metadata:
 | `references/05-code-structure.md` | 目录结构、前后端拆分、组件与数据层分离 |
 | `references/06-shadcn-mcp.md` | 如何用 shadcn MCP 查组件/示例/安装 |
 | `references/07-base-ui.md` | **Base UI 基础语法**：`render` 组合、`useRender`/`mergeProps`、`data-*` 状态属性、part 结构、分层 |
+| `references/08-saas-style-and-states.md` | **现代 SaaS 风格 + 状态完备 + token 纪律**：留白/边框/阴影取向、动效克制、9 个交互状态、不写死颜色（R011）、Tailwind v4 写法、项目级覆盖 |
 
 ## 2. 工作流（每次前端改动按序执行）
 
@@ -90,6 +93,19 @@ node "$SKILL/scripts/check-ui-rules.mjs" --baseline .ui-baseline.json
 
 退出码：`0` 通过；`1` 存在违规（或 `--strict` 下有 warning）；`2` 参数/内部错误。
 阈值可在 `assets/rules.config.json` 调整（圆角上限、禁用色相区间、文件行数上限等），不必改脚本。
+
+### 项目级覆盖（设计系统与全局标准不同时）
+
+配置按 `内置默认 → skill 自带 rules.config.json → <cwd>/.dsh/ui-rules.config.json（自动发现） → --config <path>` 逐层覆盖，`enable/disable` 取并集、`severity` 合并、以 `$` 开头的键为注释。
+
+```bash
+# 项目内放一份自己的阈值，不改 skill 全局
+mkdir -p .dsh && cp "$SKILL/assets/project-overrides.example.json" .dsh/ui-rules.config.json
+node "$SKILL/scripts/check-ui-rules.mjs"              # 自动读取 .dsh/ui-rules.config.json
+node "$SKILL/scripts/check-ui-rules.mjs" --config ./ui-rules.json
+```
+
+例如设计系统确实用 indigo 主色 + 12px 卡片圆角时，用覆盖放开这两项，而不是放宽所有项目的标准；覆盖前先确认 `references/08` 里那三条风格底线仍成立。
 
 ### 例外与抑制（必须写理由）
 

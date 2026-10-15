@@ -105,7 +105,7 @@ git commit -m "chore: add ui-standard-constraint skill"
 
 ```bash
 SKILL="${DSH_HOME:-$HOME/.dsh}/skills/ui-standard-constraint"
-node "$SKILL/scripts/check-ui-rules.mjs" --list-rules   # 能列出 R001…R010 即为就绪
+node "$SKILL/scripts/check-ui-rules.mjs" --list-rules   # 能列出 R001…R011 即为就绪
 ```
 
 期望输出：
@@ -116,6 +116,7 @@ R002  error 禁止 Claude 风格（米白底 + 暖橙 accent + serif 标题）
 ...
 R009  error 文件过大或职责未拆分
 R010  warn  Base UI 基础语法（render / data-* / 子路径导入 / 不混 Radix）
+R011  error 硬编码颜色字面量（颜色只能来自 token）
 SUP   warn  抑制注释缺少理由
 ```
 
@@ -171,6 +172,19 @@ node <skill目录>/scripts/check-ui-rules.mjs --baseline .ui-baseline.json --cha
 
 **调松紧**：改 `<skill目录>/assets/rules.config.json`（圆角上限、禁用色相区间、文件行数上限、单规则是否启用等），不要改脚本。临时改级别也可以命令行覆盖：`--severity R003=warn`、`--disable R004`、`--enable R007`。
 
+**项目级覆盖（推荐）**：设计系统与全局标准不同时，不要改 skill 自带的配置，也不要堆抑制注释，而是在项目里放一份覆盖文件：
+
+```bash
+cd <repo>
+mkdir -p .dsh
+cp <skill目录>/assets/project-overrides.example.json .dsh/ui-rules.config.json
+# 按需编辑：hueBluePurple / maxCardRadiusPx / severity / baseUi / colorLiterals …
+node <skill目录>/scripts/check-ui-rules.mjs      # 自动读取 .dsh/ui-rules.config.json
+node <skill目录>/scripts/check-ui-rules.mjs --config ./ui-rules.json   # 或显式指定
+```
+
+分层规则：`内置默认 → skill 的 assets/rules.config.json → <cwd>/.dsh/ui-rules.config.json（自动发现） → --config <path>`，`enable`/`disable` 取并集、`severity` 合并、`$` 开头的键视为注释。覆盖前确认三条风格底线仍成立：暗色底是中性灰、圆角全站一致、阴影克制。
+
 ## 十二、CI 集成
 
 ```yaml
@@ -206,6 +220,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/ui-standard-constraint"
 
 ### 版本变化提示
 
+- **v1.3.0**：新增规则 13 / R011「不写死颜色」（`bg-[#…]`、`text-[rgb(…)]`、内联样式色值、CSS 里硬编码颜色；`var(--token)` 引用与 token 源文件自动豁免）与规则 14「状态完备 + 可访问性」（人工核对）；新增 `references/08-saas-style-and-states.md` 与 `assets/project-overrides.example.json`；脚本支持**项目级配置分层**（自动读 `<cwd>/.dsh/ui-rules.config.json`，或 `--config <path>`），配置新增 `"colorLiterals": true`。**升级注意**：老项目会新报一批 R011（默认 error，会阻塞退出码），先用 `--write-baseline` 固化存量，或按需在项目覆盖里把 R011 调成 `warn`。
 - **v1.2.0**：新增规则 12 / R010「Base UI 基础语法」（`render` 组合、`data-*` 状态属性、子路径导入、业务层不直引原语、不混 Radix），新增 `references/07-base-ui.md`；配置新增 `"baseUi": true`，Radix 项目改成 `false` 可关闭该类检查。老项目升级后可能新报一批 R010（默认 warn，不阻塞退出码），需要时用基线隔离。
 - **v1.1.x**：11 条规则（R001–R009）+ 基线机制 + 基础自查脚本。
 
@@ -241,6 +256,9 @@ R010 只在项目原语层是 `@base-ui/react` 时才适用。若项目本来就
 
 **Q：`asChild` 在 `src/components/ui/**` 里为什么没报？**
 封装层（`components/ui/**`、`lib/`、`hooks/`、`store/**`）允许保留 `asChild` 兼容层（内部转成 `useRender`），R010 只在业务层提示改用 `render`。原语层里给 Base UI 原生部件直接写 `asChild` 仍是 error。
+
+**Q：R011 报了一堆硬编码颜色怎么办？**
+先分清四类：① `var(--token)` 引用（`bg-[hsl(var(--primary))]`）本来就不报；② token 源文件（`theme.ts`、`colors.ts`、`palette.css`、`chart.ts`、`brand.css` 等，仅 `.ts/.js/.css/.scss`）自动豁免——图表/终端色板抽到 `chart.ts` 即可；③ 真正的组件内色值，改成语义类（`bg-background`/`text-muted-foreground`/`border`）；④ 品牌 logo、第三方嵌入等确实要固定的色，用 `// ui-allow R011: 理由` 逐处标注。存量用基线隔离，不建议整类关掉（需要时在项目覆盖里设 `"colorLiterals": false` 或 `"severity": { "R011": "warn" }`）。
 
 **Q：规则和仓库已有的 `AGENTS.md` 冲突怎么办？**
 以 `AGENTS.md` 为准（它管部署、发版、CI 等硬流程）；把 UI 规则作为补充条款并入相应小节。

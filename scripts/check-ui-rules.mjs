@@ -43,6 +43,7 @@ const RULE_META = {
   R008: ['warn', '响应式缺失 / 移动端溢出风险'],
   R009: ['error', '文件过大或职责未拆分'],
   R010: ['warn', 'Base UI 基础语法（render / data-* / 子路径导入 / 不混 Radix）'],
+  R011: ['error', '硬编码颜色字面量（颜色只能来自 token）'],
   SUP: ['warn', '抑制注释缺少理由'],
 };
 
@@ -63,6 +64,7 @@ const DEFAULT_CONFIG = {
   maxFixedWidthPx: 360,
   warnSingleSignal: false,
   baseUi: true,
+  colorLiterals: true,
   enable: [],
   disable: ['R007'],
   severity: {},
@@ -82,21 +84,47 @@ function fatal(msg) {
   process.exit(2);
 }
 
-function loadConfig() {
-  let file = {};
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    process.stderr.write(`check-ui-rules: 读取配置失败 ${path}（${e.message}），已忽略\n`);
+    return {};
+  }
+}
+
+/**
+ * 配置分层（后者覆盖前者）：内置默认 → skill 自带 assets/rules.config.json
+ * → 项目自动发现 <cwd>/.dsh/ui-rules.config.json → 显式 --config <path>
+ * enable/disable 取并集，severity 合并；以 $ 开头的键视为注释被忽略。
+ */
+function loadConfig(o = {}) {
+  const layers = [];
   try {
     const p = new URL('../assets/rules.config.json', import.meta.url);
-    if (existsSync(p)) file = JSON.parse(readFileSync(p, 'utf8'));
-  } catch (e) {
-    process.stderr.write(`check-ui-rules: 读取 rules.config.json 失败，使用内置默认值 (${e.message})\n`);
+    if (existsSync(p)) layers.push(readJson(p));
+  } catch { /* 忽略 */ }
+  const auto = join(process.cwd(), '.dsh', 'ui-rules.config.json');
+  if (existsSync(auto)) layers.push(readJson(auto));
+  if (o.config) {
+    if (!existsSync(o.config)) fatal(`配置文件不存在: ${o.config}`);
+    layers.push(readJson(o.config));
   }
-  return {
+  const cfg = {
     ...DEFAULT_CONFIG,
-    ...file,
-    severity: { ...DEFAULT_CONFIG.severity, ...(file.severity || {}) },
-    enable: [...(file.enable || [])],
-    disable: [...(file.disable || DEFAULT_CONFIG.disable)],
+    severity: { ...DEFAULT_CONFIG.severity },
+    enable: [...DEFAULT_CONFIG.enable],
+    disable: [...DEFAULT_CONFIG.disable],
   };
+  for (const layer of layers) {
+    const { severity, enable, disable, ...rest } = layer || {};
+    Object.assign(cfg, rest);
+    if (severity) Object.assign(cfg.severity, severity);
+    if (enable) cfg.enable = [...new Set([...cfg.enable, ...enable])];
+    if (disable) cfg.disable = [...new Set([...cfg.disable, ...disable])];
+  }
+  for (const k of Object.keys(cfg)) if (k.startsWith('$')) delete cfg[k];
+  return cfg;
 }
 
 function rgbToHsl(r255, g255, b255) {
@@ -227,7 +255,7 @@ function lineFromIndex(text, index) {
 
 /* ------------------------------------------------------------------ 参数解析 */
 
-const VALUE_FLAGS = new Set(['root', 'only', 'disable', 'enable', 'baseline', 'write-baseline', 'max-per-rule', 'severity']);
+const VALUE_FLAGS = new Set(['root', 'only', 'disable', 'enable', 'baseline', 'write-baseline', 'max-per-rule', 'severity', 'config']);
 
 function parseArgs(argv) {
   const o = { paths: [], maxPerRule: 25, disable: [], enable: [] };
@@ -247,6 +275,7 @@ function parseArgs(argv) {
       case 'disable': o.disable.push(...val.split(',').map((s) => s.trim().toUpperCase())); break;
       case 'enable': o.enable.push(...val.split(',').map((s) => s.trim().toUpperCase())); break;
       case 'baseline': o.baseline = val; break;
+      case 'config': o.config = val; break;
       case 'write-baseline': o.writeBaseline = val; break;
       case 'max-per-rule': o.maxPerRule = Math.max(1, Number(val) || 25); break;
       case 'severity': {
@@ -326,6 +355,17 @@ function gitChanged(cwd) {
 function createChecker(cfg, o) {
   const findings = [];
   const suppressed = [];
+
+  /* 硬编码颜色：arbitrary 颜色工具类 / inline style 色值（供 JSX 与 CSS 检查共用）
+     注意：值里含 var( 的是 token 引用，不算写死；shadow-* 交给 R005 管，不在此重复报 */
+  const COLOR_LITERAL_CLASS = /(?<![\w-])(?:bg|text|border|ring|fill|stroke|from|to|via|divide|outline|decoration|accent|caret|placeholder)-\[(?:#[0-9a-fA-F]{3,8}|(?:rgb|hsl|oklch)a?\([^\]]*\))\]/g;
+  const COLOR_LITERAL_STYLE = /(?<![\w-])(?:color|background|backgroundColor|borderColor|fill|stroke|outlineColor)\s*:\s*["'](?:#[0-9a-fA-F]{3,8}|(?:rgb|hsl|oklch)a?\([^"']*\))["']/g;
+  const COLOR_LITERAL_ANY = /#[0-9a-fA-F]{3,8}\b|(?:rgb|hsl|oklch)a?\([^)]*\)/g;
+  const HAS_VAR = /var\(/;
+  /* R002 已单独报出的品牌/奶油色，避免重复 */
+  const R002_HEX_SET = /#(?:faf9f5|f5f4ef|fffbf5|f7f5f0|fdfcf8|faf8f5|d97757|c96442|da7756|e07a5f|cc785c|d9776b)\b/i;
+  /* token 源文件豁免：主题/色板/token 定义处本来就该出现色值（仅限 .ts/.js/.css，避免误豁免同名组件） */
+  const TOKEN_SOURCE_FILE = /[/\\.](themes?|tokens?|palettes?|swatches?|colors?|brand|chart)([./-][\w-]*)?\.(ts|js|css|scss)$/i;
 
   const enabled = (rule) => {
     if (o.only && !o.only.includes(rule)) return false;
@@ -453,6 +493,15 @@ function createChecker(cfg, o) {
           }
         }
 
+        /* R011 CSS 里写死颜色（只允许出现在 token 作用域；hsl(var(--x)) 属 token 引用不算） */
+        if (cfg.colorLiterals && !TOKEN_SOURCE_FILE.test(rel) && /^(color|background|background-color|border-color|border|outline-color|fill|stroke)$/.test(prop)) {
+          const literals = [...value.matchAll(COLOR_LITERAL_ANY)].map((m) => m[0]).filter((l) => !HAS_VAR.test(l));
+          const tokenScope = isDark || isTheme || /:root|@theme|\.dark\b/.test(block.prelude);
+          if (literals.length && !tokenScope && !R002_HEX_SET.test(literals.join(' ')) && !HAS_VAR.test(value)) {
+            report('R011', line, `CSS 里硬编码颜色 ${literals.join(', ')}；颜色只应定义在 token 作用域（:root / .dark / [data-theme] / @theme）`, `  ${prop}: ${value};`);
+          }
+        }
+
         /* R005 阴影 */
         if (/^(box-shadow|-webkit-box-shadow)$/.test(prop)) {
           if (/^\s*none\b|var\(--(shadow|ring)/.test(value)) continue;
@@ -523,9 +572,14 @@ function createChecker(cfg, o) {
       report('R002', first, `命中 Claude 风格组合：${r002Hits.map(([k]) => R002_NAMES[k]).join(' + ')}`, lines[first - 1]);
     }
 
+    let styleAttrDepth = 0; /* 跟踪 style={{ … }} 区间，避免把图表/终端色板配置当 inline style */
+
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       const ln = i + 1;
+      const styleOpens = (line.match(/style=\{\{/g) || []).length;
+      if (styleOpens) styleAttrDepth += styleOpens;
+      const inStyleAttr = styleAttrDepth > 0;
 
       /* R001 —— 蓝紫表面是硬禁；文字/图标配色与暗色蓝底给 warning 复核 */
       for (const m of line.matchAll(BLUE_PURPLE_SURFACE)) {
@@ -617,6 +671,25 @@ function createChecker(cfg, o) {
           if (/overflow-x-auto|<Table\b|min-w-\[720px\]/.test(line)) continue;
           report('R008', ln, `固定宽度 \`${g[0]}\`（${px}px）超 ${cfg.maxFixedWidthPx}px 且无断点前缀，移动端会横向溢出；改 w-full max-w-[${px}px]`, line);
         }
+      }
+
+      /* R011 硬编码颜色 */
+      if (cfg.colorLiterals && !TOKEN_SOURCE_FILE.test(rel)) {
+        for (const m of line.matchAll(COLOR_LITERAL_CLASS)) {
+          if (R002_HEX_SET.test(m[0]) || HAS_VAR.test(m[0])) continue;
+          report('R011', ln, `硬编码颜色 \`${m[0]}\`；颜色只能来自 token，改用语义类（bg-background / text-muted-foreground / border 等）`, line);
+        }
+        if (inStyleAttr) {
+          for (const m of line.matchAll(COLOR_LITERAL_STYLE)) {
+            if (R002_HEX_SET.test(m[0]) || HAS_VAR.test(m[0])) continue;
+            report('R011', ln, `inline style 写死颜色 \`${m[0]}\`；改用 token 与语义类`, line);
+          }
+        }
+      }
+
+      if (styleAttrDepth > 0) {
+        const closes = (line.match(/\}\}/g) || []).length;
+        styleAttrDepth = Math.max(0, styleAttrDepth - closes);
       }
     }
 
@@ -767,7 +840,7 @@ function main() {
     process.stdout.write(readFileSync(new URL(import.meta.url), 'utf8').split('*/')[0].replace(/^#!.*\n/, ''));
     return;
   }
-  const cfg = loadConfig();
+  const cfg = loadConfig(o);
   if (o.disable.length) cfg.disable = [...new Set([...cfg.disable, ...o.disable])];
   if (o.enable.length) cfg.enable = [...new Set([...cfg.enable, ...o.enable])];
   if (o.only) cfg.enable = [...new Set([...cfg.enable, ...o.only])];
