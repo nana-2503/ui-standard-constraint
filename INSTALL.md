@@ -105,7 +105,7 @@ git commit -m "chore: add ui-standard-constraint skill"
 
 ```bash
 SKILL="${DSH_HOME:-$HOME/.dsh}/skills/ui-standard-constraint"
-node "$SKILL/scripts/check-ui-rules.mjs" --list-rules   # 能列出 R001…R011 即为就绪
+node "$SKILL/scripts/check-ui-rules.mjs" --list-rules   # 能列出 R001…R022 即为就绪
 ```
 
 期望输出：
@@ -117,6 +117,17 @@ R002  error 禁止 Claude 风格（米白底 + 暖橙 accent + serif 标题）
 R009  error 文件过大或职责未拆分
 R010  warn  Base UI 基础语法（render / data-* / 子路径导入 / 不混 Radix）
 R011  error 硬编码颜色字面量（颜色只能来自 token）
+R012  error XSS 边界：dangerouslySetInnerHTML 需净化 / target=_blank 需 rel
+R013  warn  列表 key 使用索引
+R014  warn  重依赖未懒加载 / 路由缺少 Suspense 与 ErrorBoundary
+R015  warn  直接访问 localStorage / sessionStorage
+R016  warn  样式外溢：!important / 额外全局 CSS / 静态内联样式
+R017  warn  任意 z-index（z-[数字]）
+R018  warn  数据获取缺少 loading / error / empty 处理
+R019  info  长列表/表格未分页或虚拟化（静态无法判断行数，默认仅提示）
+R020  warn  动效：transition-all 或动画布局属性
+R021  warn  日期/数字格式化散落（应集中到 lib/format）
+R022  warn  前端无测试文件
 SUP   warn  抑制注释缺少理由
 ```
 
@@ -220,6 +231,7 @@ rm -rf "${DSH_HOME:-$HOME/.dsh}/skills/ui-standard-constraint"
 
 ### 版本变化提示
 
+- **v1.4.0**：新增**工程硬化规则 15–22**（脚本 R012–R022）：XSS 边界（R012，唯一 error）、重依赖懒加载（R014）、列表 key（R013）、异步三态（R018）、存储与格式化收口（R015/R021）、样式边界（R016）、层叠与动效（R017/R020）、大数据量（R019，info）、测试门槛（R022，仓库级）；新增 `references/09-hardening.md`。**升级注意**：除 R012 外都是 warn/info，不阻塞退出码，但首次全量会刷出较多提示；建议 `--write-baseline` 固化存量后逐条收敛——一条规则只要 10% 是假错，剩下 90% 的真错也没人看，确属误报的**单独**降级或 `--disable`，不要整类关掉。
 - **v1.3.0**：新增规则 13 / R011「不写死颜色」（`bg-[#…]`、`text-[rgb(…)]`、内联样式色值、CSS 里硬编码颜色；`var(--token)` 引用与 token 源文件自动豁免）与规则 14「状态完备 + 可访问性」（人工核对）；新增 `references/08-saas-style-and-states.md` 与 `assets/project-overrides.example.json`；脚本支持**项目级配置分层**（自动读 `<cwd>/.dsh/ui-rules.config.json`，或 `--config <path>`），配置新增 `"colorLiterals": true`。**升级注意**：老项目会新报一批 R011（默认 error，会阻塞退出码），先用 `--write-baseline` 固化存量，或按需在项目覆盖里把 R011 调成 `warn`。
 - **v1.2.0**：新增规则 12 / R010「Base UI 基础语法」（`render` 组合、`data-*` 状态属性、子路径导入、业务层不直引原语、不混 Radix），新增 `references/07-base-ui.md`；配置新增 `"baseUi": true`，Radix 项目改成 `false` 可关闭该类检查。老项目升级后可能新报一批 R010（默认 warn，不阻塞退出码），需要时用基线隔离。
 - **v1.1.x**：11 条规则（R001–R009）+ 基线机制 + 基础自查脚本。
@@ -259,6 +271,9 @@ R010 只在项目原语层是 `@base-ui/react` 时才适用。若项目本来就
 
 **Q：R011 报了一堆硬编码颜色怎么办？**
 先分清四类：① `var(--token)` 引用（`bg-[hsl(var(--primary))]`）本来就不报；② token 源文件（`theme.ts`、`colors.ts`、`palette.css`、`chart.ts`、`brand.css` 等，仅 `.ts/.js/.css/.scss`）自动豁免——图表/终端色板抽到 `chart.ts` 即可；③ 真正的组件内色值，改成语义类（`bg-background`/`text-muted-foreground`/`border`）；④ 品牌 logo、第三方嵌入等确实要固定的色，用 `// ui-allow R011: 理由` 逐处标注。存量用基线隔离，不建议整类关掉（需要时在项目覆盖里设 `"colorLiterals": false` 或 `"severity": { "R011": "warn" }`）。
+
+**Q：v1.4.0 的 R012–R022 一次刷出几十条提示，正常吗？**
+正常，这批规则本来就按「先 warn 上线」设计（R012 XSS 与 R019 除外，前者是 error、后者是 info）。建议：① `--write-baseline .ui-baseline.json` 固化存量，日常只看新增；② 观察 1–2 周，对误报**逐条**处理——`// ui-allow R0xx: 理由` 单点抑制，或在项目覆盖里 `"severity": { "R014": "info" }` / `"disable": ["R021"]`；③ 不要因为个别误报整类关掉。补充两点：`R022` 是**仓库级**检查（整个 frontend 没有任何 `*.test.*`/`*.spec.*` 才报一次）；`R019` 是 info，不参与 `--strict` 失败判定。
 
 **Q：规则和仓库已有的 `AGENTS.md` 冲突怎么办？**
 以 `AGENTS.md` 为准（它管部署、发版、CI 等硬流程）；把 UI 规则作为补充条款并入相应小节。

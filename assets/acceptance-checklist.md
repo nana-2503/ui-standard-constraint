@@ -9,7 +9,7 @@
 - [ ] `cd frontend && env -u NODE_ENV npm run build` 通过
 - [ ] 未新增无理由的 `ui-allow` 抑制注释
 
-## B. 规则覆盖（14 条；括号内为脚本规则号）
+## B. 规则覆盖（22 条；括号内为脚本规则号）
 
 - [ ] **1 shadcn 优先**（人工 + MCP）：新交互组件来自 shadcn MCP 查询结果，未手搓等价件；`components/ui/**` 未被业务代码改写
 - [ ] **2 无描述性文本**（R007，默认关闭需 `--enable R007`）：没有解释性/宣传性段落；说明信息用标签、状态、层级表达
@@ -25,6 +25,14 @@
 - [ ] **12 Base UI 基础语法**（R010）：组合用 `render={<X />}` 而非 `asChild`；状态样式用 `data-open`/`data-checked` 等而非 `data-[state=…]`；从 `@base-ui/react/<组件>` 子路径导入；业务层不直接引原语、不引 Radix
 - [ ] **13 不写死颜色**（R011）：无 `bg-[#…]`/`text-[rgb(…)]`/内联样式色值；色值只在 token 层（`:root`/`.dark`/`[data-theme]`/`@theme`）；豁免文件（`theme.ts`/`palette.css` 等）之外的例外都有 `ui-allow` 理由
 - [ ] **14 状态完备 + 可访问性**（人工）：hover / focus-visible / active / disabled / loading / empty / error / selected 逐一交代；键盘可达、图标按钮有 `aria-label`、错误用 `aria-invalid`+`aria-describedby`；动效 120–200ms 且尊重 `prefers-reduced-motion`
+- [ ] **15 安全边界**（R012，error）：`dangerouslySetInnerHTML` 已净化；`target="_blank"` 带 `rel="noopener noreferrer"`
+- [ ] **16 首屏体积**（R014）：重依赖（monaco/tiptap/echarts/xterm…）经 `lazy()` 加载，且有 `Suspense` + `ErrorBoundary`
+- [ ] **17 渲染正确性**（R013/R018）：列表 key 用稳定 id；数据获取交代 loading / error / empty
+- [ ] **18 收口**（R015/R021）：`localStorage` 走统一模块；日期数字格式化集中到 `lib/format`
+- [ ] **19 样式边界**（R016）：无 `!important`；未新增全局样式文件；`@layer components` 未增长；内联 `style` 仅动态值
+- [ ] **20 层叠与动效**（R017/R020）：无 `z-[数字]`；无 `transition-all`；未动画 width/height/top/left
+- [ ] **21 大数据量**（R019，info）：表格/列表 > 200 行已分页或虚拟滚动（info 仅提示，不阻塞交付）
+- [ ] **22 测试门槛**（R022）：表格筛选排序、表单提交校验、主题切换、危险操作确认至少各 1 个测试
 
 ## C. 视觉核对（截图）
 

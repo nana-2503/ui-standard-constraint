@@ -44,6 +44,17 @@ const RULE_META = {
   R009: ['error', '文件过大或职责未拆分'],
   R010: ['warn', 'Base UI 基础语法（render / data-* / 子路径导入 / 不混 Radix）'],
   R011: ['error', '硬编码颜色字面量（颜色只能来自 token）'],
+  R012: ['error', 'XSS 边界：dangerouslySetInnerHTML 需净化 / target=_blank 需 rel'],
+  R013: ['warn', '列表 key 使用索引'],
+  R014: ['warn', '重依赖未懒加载 / 路由缺少 Suspense 与 ErrorBoundary'],
+  R015: ['warn', '直接访问 localStorage / sessionStorage'],
+  R016: ['warn', '样式外溢：!important / 额外全局 CSS / 静态内联样式'],
+  R017: ['warn', '任意 z-index（z-[数字]）'],
+  R018: ['warn', '数据获取缺少 loading / error / empty 处理'],
+  R019: ['info', '长列表/表格未分页或虚拟化（行数无法静态判断，默认仅提示）'],
+  R020: ['warn', '动效：transition-all 或动画布局属性'],
+  R021: ['warn', '日期/数字格式化散落（应集中到 lib/format）'],
+  R022: ['warn', '前端无测试文件'],
   SUP: ['warn', '抑制注释缺少理由'],
 };
 
@@ -311,7 +322,7 @@ function walk(dir, out, includeUi, includeTests) {
     if (e.isDirectory()) {
       if (SKIP_DIRS.has(e.name)) continue;
       if (!includeUi && e.name === 'ui' && basename(dir) === 'components') continue;
-      walk(p, out, includeUi);
+      walk(p, out, includeUi, includeTests);
     } else if (e.isFile()) {
       const ext = extname(e.name);
       if (!CODE_EXT.has(ext)) continue;
@@ -437,6 +448,7 @@ function createChecker(cfg, o) {
     if (isCss) checkCss({ text, lines, rel, report });
     if (isJsx || ext === '.html') checkJsx({ text, lines, rel, report, isJsx });
     if (isJsx) checkBaseUi({ text, lines, rel, report });
+    if (isJsx) checkExtended({ text, lines, rel, report });
     checkFileLevel({ text, lines, rel, ext, isCss, report });
   }
 
@@ -808,10 +820,139 @@ function createChecker(cfg, o) {
     }
   }
 
+  /* ------------------------------- 扩展硬化规则 R012–R021（工程/安全/性能） */
+
+  const HEAVY_DEPS = /^(?:monaco-editor|@monaco-editor\/react|@tiptap\/[\w-]+|echarts|echarts-for-react|xterm|xterm-addon-[\w-]+|@xterm\/[\w-]+|chart\.js|react-chartjs-2|recharts|d3|d3-[\w-]+|three|@react-three\/[\w-]+|pdfjs-dist|react-pdf|@xyflow\/react|reactflow|mermaid|katex|@codemirror\/[\w-]+|codemirror|highlight\.js|prismjs)$/;
+  const STORAGE_DIRECT = /(?<![\w.])(?:localStorage|sessionStorage)\s*\./;
+  const STATIC_STYLE_BODY = /^[\s\w-]*:\s*(?:'[^']*'|"[^"]*"|-?\d+(?:\.\d+)?)(?:\s*,\s*[\s\w-]*:\s*(?:'[^']*'|"[^"]*"|-?\d+(?:\.\d+)?))*\s*$/;
+
+  function checkExtended({ text, lines, rel, report }) {
+    const inDataLayer = /\/(lib|hooks|services|store|stores|utils)\//.test(rel);
+    const inUiLayer = /components\/ui\//.test(rel);
+
+    /* R012 XSS 边界 */
+    if (/dangerouslySetInnerHTML/.test(text) && !/sanitiz|dompurify|purify/i.test(text)) {
+      const m = text.match(/dangerouslySetInnerHTML/);
+      report('R012', lineFromIndex(text, m.index), '使用 dangerouslySetInnerHTML 但本文件没有净化逻辑；注入前必须先经 DOMPurify/sanitize（或改用结构化渲染）', m[0], 'error');
+    }
+    for (let i = 0; i < lines.length; i++) {
+      if (!/target=["']_blank["']/.test(lines[i])) continue;
+      const win = [lines[i], lines[i + 1] || '', lines[i + 2] || ''].join(' ');
+      if (!/\brel=/.test(win)) {
+        report('R012', i + 1, 'target="_blank" 缺 rel="noopener noreferrer"（反向标签劫持风险）', lines[i], 'error');
+      }
+    }
+
+    /* R013 列表 key 用索引 */
+    for (let i = 0; i < lines.length; i++) {
+      for (const m of lines[i].matchAll(/\bkey=\{\s*(?:index|i|idx|index2|indexOf[\w$]*)\s*\}/g)) {
+        report('R013', i + 1, `列表 key 用了索引 \`${m[0]}\`；筛选/排序/删除后状态会串行，改用稳定业务 id`, lines[i], 'warn');
+      }
+    }
+
+    /* R014 重依赖静态引入 + 懒加载兜底 */
+    const seenDep = new Set();
+    for (const m of text.matchAll(/import\b(?:(?!\bimport\b)[\s\S])*?from\s*["']([^"']+)["']/g)) {
+      const spec = m[1];
+      if (!HEAVY_DEPS.test(spec) || seenDep.has(spec)) continue;
+      seenDep.add(spec);
+      report('R014', lineFromIndex(text, m.index), `静态引入重依赖 \`${spec}\` 会进主包；改为 lazy(() => import("${spec}")) 或路由级动态 import，并给 Suspense 兜底`, `import … from "${spec}"`, 'warn');
+    }
+    if (/\blazy\s*\(/.test(text)) {
+      const missing = [];
+      if (!/\bSuspense\b/.test(text)) missing.push('Suspense');
+      if (!/ErrorBoundary/.test(text)) missing.push('ErrorBoundary');
+      if (missing.length) {
+        report('R014', 1, `本文件使用 lazy() 但看不到 ${missing.join(' / ')} 兜底；chunk 加载失败会白屏`, rel, 'warn');
+      }
+    }
+
+    /* R015 存储直接访问 */
+    let storageHits = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (storageHits >= 2 || !STORAGE_DIRECT.test(lines[i])) continue;
+      if (inDataLayer || /(?:^|\/)(?:storage|persist|prefs|settings)[\w.-]*$/.test(rel)) continue;
+      storageHits++;
+      report('R015', i + 1, '直接访问 localStorage/sessionStorage；收口到统一模块（类型化 key、版本号、异常兜底、跨标签同步）', lines[i], 'warn');
+    }
+
+    /* R016 样式外溢 */
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/!important/.test(line)) {
+        report('R016', i + 1, '`!important` 说明选择器在打架；用更高优先级的语义类或调整层叠顺序解决', line, 'warn');
+      }
+      for (const m of line.matchAll(/style=\{\{\s*([^{}]*?)\s*\}\}/g)) {
+        if (!STATIC_STYLE_BODY.test(m[1])) continue;
+        report('R016', i + 1, `静态内联样式 \`style={{ ${m[1]} }}\`；固定值用 class，内联只留给动态计算值（尺寸比例、动画进度）`, line, 'warn');
+      }
+    }
+
+    /* R017 任意 z-index */
+    for (let i = 0; i < lines.length; i++) {
+      for (const m of lines[i].matchAll(/(?<![\w-])z-\[(\d+)\]/g)) {
+        report('R017', i + 1, `任意层级 \`${m[0]}\`；用语义档位（下拉/浮层 z-20、sticky 头 z-30、抽屉 z-50）或 z-index token`, lines[i], 'warn');
+      }
+    }
+
+    /* R018 异步三态 */
+    const hasDataAccess = /(?<![\w.])(?:fetch\(|axios\.|useQuery\(|useSWR\()/.test(text);
+    const hasJsx = /<\/[A-Za-z]|<>/.test(text);
+    if (hasDataAccess && hasJsx && !inDataLayer) {
+      const lack = [];
+      if (!/loading|isLoading|isPending|Skeleton/i.test(text)) lack.push('loading');
+      if (!/error|catch\s*\(|失败|错误/i.test(text)) lack.push('error');
+      if (!/empty|暂无|EmptyState|NoData|nodata/i.test(text)) lack.push('empty');
+      if (lack.length) {
+        report('R018', 1, `数据获取未交代 ${lack.join(' / ')} 状态；三态齐全才算可用界面`, rel, 'warn');
+      }
+    }
+
+    /* R019 长列表/表格渲染（默认 info：数据量无法静态判断，只作提示） */
+    if (/<Table(?:Row|Body)?\b/.test(text) && /\.map\(/.test(text)
+      && !/virtual|Virtualizer|react-window|pageSize|Pagination|pagination|perPage|slice\(|\bpage\b|\btotal\b|\boffset\b|\blimit\b|\.length\s*[<>]=?\s*\d/.test(text)) {
+      report('R019', 1, '表格直接 map 全量数据，未看到分页/虚拟化线索；请确认数据量上限（>200 行需分页或虚拟滚动）', rel, 'info');
+    }
+
+    /* R020 动效约束 */
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (/(?<![\w-])transition-all(?![\w-])/.test(line)) {
+        report('R020', i + 1, '`transition-all` 会动画所有属性（含布局属性）；只列需要过渡的属性，如 transition-colors transition-transform', line, 'warn');
+      }
+      const m = line.match(/(?<![\w-])transition-(width|height|top|left|right|bottom|margin|padding)(?![\w-])/);
+      if (m) {
+        report('R020', i + 1, `动画布局属性 \`${m[0]}\` 会触发重排；改用 transform / opacity（可配 will-change）`, line, 'warn');
+      }
+    }
+
+    /* R021 格式化散落 */
+    if (!inDataLayer && !inUiLayer && /(?:toLocaleString|toLocaleDateString|toLocaleTimeString|new Intl\.)/.test(text)) {
+      const m = text.match(/(?:toLocaleString|toLocaleDateString|toLocaleTimeString|new Intl\.[A-Za-z]+)/);
+      report('R021', lineFromIndex(text, m.index), '日期/数字格式化散落在组件里；集中到 lib/format.ts（统一 locale、时区、精度）', m[0], 'warn');
+    }
+  }
+
   /* ------------------------------------------------- 文件级结构检查 R009 */
 
   function checkFileLevel({ text, lines, rel, ext, isCss, report }) {
-    if (isCss) return;
+    if (isCss) {
+      /* R016 样式外溢（CSS 侧） */
+      const tokenFile = /(?:^|\/)(?:index|globals|app|theme[\w-]*|tokens)\.(?:css|scss)$/.test(rel);
+      if (!tokenFile && !/\.module\.(?:css|scss)$/.test(rel)) {
+        report('R016', 1, `额外的全局样式文件 \`${basename(rel)}\`；样式应留在 token 文件与 Tailwind 工具类里（组件样式用 .module.css）`, basename(rel), 'warn');
+      }
+      const layerIdx = text.search(/@layer\s+components/);
+      if (layerIdx >= 0) {
+        report('R016', lineFromIndex(text, layerIdx), '@layer components 里的自定义类只减不增；新样式优先用工具类 + token', '@layer components', 'warn');
+      }
+      for (let i = 0; i < lines.length; i++) {
+        if (/!important/.test(lines[i])) {
+          report('R016', i + 1, '`!important` 说明选择器在打架；调整层叠顺序或用更高优先级的语义类', lines[i], 'warn');
+        }
+      }
+      return;
+    }
     if (ext !== '.html') {
       const n = lineCountOf(text);
       if (n > cfg.maxFileLines) {
@@ -829,7 +970,7 @@ function createChecker(cfg, o) {
     if (beImport) report('R009', 1, `前端 import 了后端路径 ${beImport[0]}，接口须走 HTTP 客户端`, beImport[0]);
   }
 
-  return { findings, suppressed, analyze };
+  return { findings, suppressed, analyze, enabled, sevOf };
 }
 
 /* ------------------------------------------------------------------ 输出 */
@@ -882,6 +1023,30 @@ function main() {
   for (const f of files) {
     try { checker.analyze(f); } catch (e) {
       process.stderr.write(`check-ui-rules: 解析失败 ${f}: ${e.message}\n`);
+    }
+  }
+
+  /* R022 仓库级：前端是否存在测试文件（walk 默认跳过测试文件，这里单独统计） */
+  if (checker.enabled('R022')) {
+    let testFileCount = 0;
+    for (const r of roots) {
+      if (statSync(r).isFile()) {
+        if (/\.(?:test|spec)\.[tj]sx?$/.test(r)) testFileCount++;
+        continue;
+      }
+      const all = [];
+      walk(r, all, true, true);
+      testFileCount += all.filter((f) => /\.(?:test|spec)\.[tj]sx?$/.test(f)).length;
+    }
+    if (testFileCount === 0) {
+      checker.findings.push({
+        rule: 'R022',
+        severity: checker.sevOf('R022'),
+        file: '(仓库级)',
+        line: 1,
+        message: '前端没有测试文件；表格筛选排序、表单提交校验、主题切换、危险操作确认至少各 1 个测试',
+        snippet: `扫描 ${files.length} 个文件，未发现 *.test.* / *.spec.*`,
+      });
     }
   }
 
